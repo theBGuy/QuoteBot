@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2020", "dom"],
+    "module": "commonjs",
+    "target": "es2022",
+    "esModuleInterop": true,
+    "resolveJsonModule": true, // Enable JSON imports
+    "allowSyntheticDefaultImports": true,
+    "incremental": true,
+    "noImplicitAny": false,
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "inlineSources": true,
+    "inlineSourceMap": false, // Set this to false to separate .map files
+    "outDir": "./dist",
+    "baseUrl": "./",
+    // "rootDir": "./src",
+    "strictNullChecks": true,
+    "paths": {
+      "@/*": ["src/*"],
+      "@test/*": ["./test/*"],
+    },
+    "types": ["node"],
+    "skipLibCheck": true  // Skips type checking for libraries in `node_modules`
+  },
+  "include": ["src/**/*.ts", "src/types/**/*.d.ts", "scripts/"],
+  "exclude": ["node_modules", "dist", "coverage", "test"]
+}
