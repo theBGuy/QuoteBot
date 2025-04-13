@@ -1,7 +1,7 @@
 import { type CacheType, type ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import type { Command } from "..";
 
-export class PingCommand implements Command {
+export default class PingCommand implements Command {
   name = "ping";
   description = "Pings the bot";
   slashCommandConfig = new SlashCommandBuilder().setName(this.name).setDescription(this.description);

@@ -1,26 +1,58 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import type { ChatInputCommandInteraction } from "discord.js";
 import type { Command } from "./commands";
-import { JokeCommand } from "./commands/core/joke";
-import { MemeCommand } from "./commands/core/meme";
-import { QodCommand } from "./commands/core/qod";
-import { QuoteCommand } from "./commands/core/quote";
-import { QuoteImgCommand } from "./commands/core/quoteImg";
-import { RiddleCommand } from "./commands/core/riddle";
-import { PingCommand } from "./commands/utility/ping";
 
 export class InteractionHandler {
-  private commands: Command[];
+  private commands: Command[] = [];
 
   constructor() {
-    this.commands = [
-      new PingCommand(),
-      new MemeCommand(),
-      new QodCommand(),
-      new QuoteCommand(),
-      new QuoteImgCommand(),
-      new JokeCommand(),
-      new RiddleCommand(),
-    ];
+    this.loadCommands();
+  }
+
+  private loadCommands() {
+    const commandsPath = join(__dirname, "commands");
+
+    const loadCommandsFromDir = (dirPath: string) => {
+      try {
+        const items = readdirSync(dirPath, { withFileTypes: true });
+
+        for (const item of items) {
+          const itemPath = join(dirPath, item.name);
+
+          if (item.isDirectory()) {
+            loadCommandsFromDir(itemPath);
+          } else if (item.name.endsWith(".ts") || item.name.endsWith(".js")) {
+            if (item.name === "index.ts" || item.name === "index.js") continue;
+            if (item.name.startsWith("types.") || item.name.startsWith("interfaces.")) continue;
+
+            try {
+              const commandModule = require(itemPath);
+
+              // Look for default export or named exports that might be command classes
+              const CommandClass = commandModule.default || Object.values(commandModule)[0];
+
+              if (CommandClass && typeof CommandClass === "function") {
+                const command = new CommandClass();
+
+                if (command.name && command.slashCommandConfig && typeof command.execute === "function") {
+                  console.log(`Loaded command: ${command.name}`);
+                  this.commands.push(command);
+                }
+              }
+            } catch (error) {
+              console.error(`Error loading command from file ${itemPath}:`, error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error reading directory ${dirPath}:`, error);
+      }
+    };
+
+    loadCommandsFromDir(commandsPath);
+
+    console.log(`Loaded ${this.commands.length} commands`);
   }
 
   getSlashCommands() {

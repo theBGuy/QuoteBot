@@ -4,7 +4,7 @@ import type { Command } from "..";
 
 const commandService = new CommandService();
 
-export class RiddleCommand implements Command {
+export default class RiddleCommand implements Command {
   name = "riddle";
   description = "Get a random riddle";
   slashCommandConfig = new SlashCommandBuilder().setName(this.name).setDescription(this.description);

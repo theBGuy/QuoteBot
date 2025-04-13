@@ -4,7 +4,7 @@ import type { Command } from "..";
 
 const commandService = new CommandService();
 
-export class MemeCommand implements Command {
+export default class MemeCommand implements Command {
   name = "meme";
   description = "Generate random meme from programming humor subreddit";
   slashCommandConfig = new SlashCommandBuilder().setName(this.name).setDescription(this.description);

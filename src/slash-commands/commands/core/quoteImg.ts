@@ -4,7 +4,7 @@ import type { Command } from "..";
 
 const commandService = new CommandService();
 
-export class QuoteImgCommand implements Command {
+export default class QuoteImgCommand implements Command {
   name = "quoteimg";
   description = "Get a random quote on an image";
   slashCommandConfig = new SlashCommandBuilder().setName(this.name).setDescription(this.description);
