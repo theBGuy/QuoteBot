@@ -6,7 +6,7 @@ services:
     environment:
       - CLIENT_TOKEN
       - CLIENT_ID
-      - DATABASE_URL=postgresql://postgres:prisma@db:5432/quote-bot
+      - DATABASE_URL=postgresql://postgres:prisma@db:5432/quote-bot?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_PORT=5432
@@ -35,6 +35,7 @@ services:
   db:
     image: postgres
     restart: unless-stopped
+    user: postgres
     environment:
       POSTGRES_DB: quote-bot
       POSTGRES_USER: postgres
