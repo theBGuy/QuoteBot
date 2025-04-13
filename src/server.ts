@@ -51,6 +51,11 @@ class QuoteBotApplication {
         return message.reply(jokeResponse);
       }
 
+      const triviaResponse = await this.commandService.checkTrivia(message.author.id, message.content);
+      if (triviaResponse) {
+        return message.reply(triviaResponse);
+      }
+
       switch (content) {
         case "riddle me this batman":
         case "!riddle":
@@ -66,6 +71,8 @@ class QuoteBotApplication {
           return this.commandService.handleMeme(message);
         case "!joke":
           return this.commandService.handleJoke(message);
+        case "!trivia":
+          return this.commandService.handleTrivia(message);
         default:
           break;
       }
