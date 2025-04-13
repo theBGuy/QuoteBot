@@ -1,8 +1,9 @@
-import { InteractionHandler } from "@/slash-commands";
-import { REST, Routes } from "discord.js";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+import { InteractionHandler } from "@/slash-commands";
+import { REST, Routes } from "discord.js";
 
 const DISCORD_ACCESS_TOKEN = process.env.CLIENT_TOKEN ?? "";
 const DISCORD_CLIENT_ID = process.env.CLIENT_ID ?? "";
