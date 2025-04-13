@@ -102,7 +102,7 @@ To deploy using Docker:
 docker-compose up -d
 ```
 
-To devlop using Docker:
+To develop using Docker:
 
 ```
 docker compose up --watch
