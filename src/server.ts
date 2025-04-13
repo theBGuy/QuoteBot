@@ -9,7 +9,13 @@ import {
   REST,
 } from "discord.js";
 import dotenv from "dotenv";
-import { fetchRandomJoke, fetchRandomMeme, fetchRandomQuote, fetchRandomRiddle } from "./controllers";
+import {
+  fetchQuoteOfTheDay,
+  fetchRandomJoke,
+  fetchRandomMeme,
+  fetchRandomQuote,
+  fetchRandomRiddle,
+} from "./controllers";
 import prismaClient from "./libs/prismaClient";
 import { initializeRedis, redisClient } from "./libs/redisClient";
 import { InteractionHandler } from "./slash-commands";
@@ -26,18 +32,6 @@ if (!DISCORD_ACCESS_TOKEN) {
 if (!DISCORD_CLIENT_ID) {
   throw new Error(`Failed to load client id ${process.env.CLIENT_ID}`);
 }
-
-type RedditPost = {
-  postLink: string;
-  subreddit: string;
-  title: string;
-  url: string;
-  nsfw: boolean;
-  spoiler: boolean;
-  author: string;
-  ups: number;
-  preview: string[];
-};
 
 class QuoteBotApplication {
   private client: Client;
@@ -77,18 +71,51 @@ class QuoteBotApplication {
     }
   }
 
+  async handleQodEvent(message: Message) {
+    const { quote, author } = await fetchQuoteOfTheDay();
+    if (quote) {
+      message.reply(`${quote} \n\n**${author}**`);
+    } else {
+      message.reply("Sorry, I couldn't fetch a quote for you.");
+    }
+  }
+
+  async handleQuoteImage(message: Message) {
+    try {
+      const cacheParam = Math.random().toString(36).substring(7);
+      const imageUrl = `https://zenquotes.io/api/image?cb=${cacheParam}`;
+      const response = await fetch(imageUrl, { method: "HEAD" });
+
+      if (!response.ok) {
+        message.reply("Sorry, I couldn't fetch a quote image right now.");
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setImage(imageUrl)
+        .setColor(0x0099ff)
+        .setFooter({ text: "Powered by ZenQuotes.io" })
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+    } catch (error) {
+      console.error("Error fetching quote image:", error);
+      message.reply("Sorry, there was an error fetching the quote image.");
+    }
+  }
+
   async handleMemeEvent(message: Message) {
-    const { meme, title, post, author: memeAuthor, subreddit } = await fetchRandomMeme(message);
-    if (meme) {
-      console.log("title", title, "author", memeAuthor, "post", post);
-      const file = new AttachmentBuilder(meme);
+    const { url, title, postLink, author: memeAuthor, subreddit } = await fetchRandomMeme(message);
+    if (url) {
+      console.log("title", title, "author", memeAuthor, "post", postLink);
+      const file = new AttachmentBuilder(url);
       const memeEmbed = new EmbedBuilder()
-        .setTitle(title)
-        .setURL(post)
-        .setAuthor({ name: memeAuthor })
-        .setThumbnail(meme)
-        .setImage(`attachment://${meme}`)
-        .setFooter({ text: subreddit });
+        .setTitle(title ?? null)
+        .setURL(postLink ?? null)
+        .setAuthor({ name: memeAuthor ?? "" })
+        .setThumbnail(url)
+        .setImage(`attachment://${url}`)
+        .setFooter({ text: subreddit ?? "" });
       message.reply({ embeds: [memeEmbed], files: [file] });
     } else {
       message.reply("Sorry, I couldn't fetch a meme for you.");
@@ -134,6 +161,10 @@ class QuoteBotApplication {
         case "give me a quote":
         case "!quote":
           return this.handleQuoteEvent(message);
+        case "!qod":
+          return this.handleQodEvent(message);
+        case "!quoteimg":
+          return this.handleQuoteImage(message);
         case "!meme":
           return this.handleMemeEvent(message);
         case "!joke":

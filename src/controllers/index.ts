@@ -1,4 +1,6 @@
+import { redisClient } from "@/libs/redisClient";
 import type { Message } from "discord.js";
+export * from "@/controllers/quotes";
 
 export type RedditPost = {
   postLink: string;
@@ -19,11 +21,6 @@ export type JokeApiResponse = {
   id: number;
 };
 
-// simple in memory cache
-const memeCache: Map<string, Map<string, number>> = new Map();
-const jokeCache: Map<string, Map<number, number>> = new Map();
-const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
 export async function fetchRandomRiddle() {
   try {
     const response = await fetch("https://riddles-api.vercel.app/random");
@@ -35,107 +32,164 @@ export async function fetchRandomRiddle() {
   }
 }
 
-export async function fetchRandomQuote() {
-  try {
-    const response = await fetch("https://zenquotes.io/api/random");
-    const data: { q: string; a: string }[] = await response.json();
-    const { q: quote, a: author } = data[0];
-    return { quote, author };
-  } catch (error) {
-    console.error("Error fetching quote", error);
-    return { quote: null, author: null };
-  }
-}
+type BulkMemesResponse = {
+  count: number;
+  memes: RedditPost[];
+};
 
-export async function fetchRandomMeme(message: Message) {
+export async function fetchRandomMeme(message: Message, retries = 0): Promise<Partial<RedditPost>> {
   try {
-    const response = await fetch("https://meme-api.com/gimme/programminghumor");
-    const data: RedditPost = await response.json();
+    if (retries >= 5) throw new Error("Failed to fetch unique meme");
 
     const serverId = message.guild?.id;
     if (!serverId) {
       throw new Error("Server ID not found");
     }
 
-    // Initialize cache for the server if it doesn't exist
-    if (!memeCache.has(serverId)) {
-      console.debug(`Created cache for server ${message.guild.name}`);
-      memeCache.set(serverId, new Map());
+    const MEMES_CACHE_KEY = `memes:${serverId}:all`;
+    const USED_MEMES_KEY = `memes:${serverId}:used`;
+    const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
+
+    let memesArray: RedditPost[] = [];
+    const cachedMemes = await redisClient.get(MEMES_CACHE_KEY);
+
+    if (cachedMemes) {
+      memesArray = JSON.parse(cachedMemes);
+      console.debug(`Retrieved ${memesArray.length} memes from cache for server ${message.guild.name}`);
+    } else {
+      console.debug(`Fetching memes from API for server ${message.guild.name}`);
+      const response = await fetch("https://meme-api.com/gimme/programminghumor/50");
+      const data: BulkMemesResponse = await response.json();
+
+      if (!data.memes || data.memes.length === 0) {
+        throw new Error("No memes returned from API");
+      }
+
+      memesArray = data.memes;
+      await redisClient.set(MEMES_CACHE_KEY, JSON.stringify(memesArray), { EX: ONE_WEEK_SECONDS });
     }
 
-    // biome-ignore lint/style/noNonNullAssertion: <It's handled above it can't be null>
-    const serverCache = memeCache.get(serverId)!;
+    const usedMemeUrls = await redisClient.sMembers(USED_MEMES_KEY);
+    const usedMemesSet = new Set(usedMemeUrls);
+    const availableMemes = memesArray.filter((meme) => {
+      const memeUrl = meme.preview?.at(-1);
+      return memeUrl && !usedMemesSet.has(memeUrl);
+    });
 
-    // Clean up cache - any older than a week
-    const now = Date.now();
-    for (const [url, timestamp] of serverCache.entries()) {
-      if (now - timestamp > ONE_WEEK_MS) {
-        serverCache.delete(url);
+    console.debug(`${availableMemes.length} unused memes available out of ${memesArray.length} total`);
+
+    if (availableMemes.length > 0) {
+      const randomIndex = Math.floor(Math.random() * availableMemes.length);
+      const selectedMeme = availableMemes[randomIndex];
+      const memeUrl = selectedMeme.preview.at(-1);
+
+      if (memeUrl) {
+        await redisClient.sAdd(USED_MEMES_KEY, memeUrl);
+        await redisClient.expire(USED_MEMES_KEY, ONE_WEEK_SECONDS);
+
+        return {
+          title: selectedMeme.title,
+          author: selectedMeme.author,
+          subreddit: selectedMeme.subreddit,
+          url: memeUrl,
+          postLink: selectedMeme.postLink,
+        };
       }
     }
 
-    const memeUrl = data.preview.at(-1);
-    if (!memeUrl || serverCache.has(memeUrl)) {
-      console.debug("Meme found in cache, fetching new one");
-      return fetchRandomMeme(message); // Recursively fetch another meme
+    if (retries === 0) {
+      console.debug("All memes have been used, resetting used memes set");
+      await redisClient.del(USED_MEMES_KEY);
+      return fetchRandomMeme(message, retries + 1);
     }
 
-    // Add the new meme to the cache
-    serverCache.set(memeUrl, now);
+    const randomMeme = memesArray[Math.floor(Math.random() * memesArray.length)];
+    const memeUrl = randomMeme.preview?.at(-1);
 
+    console.debug("No unused memes available, returning a random meme");
     return {
-      title: data.title,
-      author: data.author,
-      subreddit: data.subreddit,
-      meme: data.preview.at(-1),
-      post: data.postLink,
+      title: randomMeme.title,
+      author: randomMeme.author,
+      subreddit: randomMeme.subreddit,
+      url: memeUrl,
+      postLink: randomMeme.postLink,
     };
   } catch (error) {
     console.error("Error fetching meme", error);
+
+    if (retries < 3) {
+      try {
+        const response = await fetch("https://meme-api.com/gimme/programminghumor");
+        const data: RedditPost = await response.json();
+
+        return {
+          title: data.title,
+          author: data.author,
+          subreddit: data.subreddit,
+          url: data.preview?.at(-1),
+          postLink: data.postLink,
+        };
+      } catch (fallbackError) {
+        console.error("Fallback meme fetch failed", fallbackError);
+      }
+    }
+
     return {};
   }
 }
 
-export async function fetchRandomJoke(message: Message, retries = 0) {
+export async function fetchRandomJoke(message: Message, retries = 0): Promise<JokeApiResponse | null> {
   try {
     if (retries >= 5) throw new Error("Failed to fetch unique joke");
-
-    const response = await fetch("https://official-joke-api.appspot.com/jokes/programming/random");
-    const data: JokeApiResponse[] = await response.json();
 
     const serverId = message.guild?.id;
     if (!serverId) {
       throw new Error("Server ID not found");
     }
 
-    // Initialize cache for the server if it doesn't exist
-    if (!jokeCache.has(serverId)) {
-      console.debug(`Created cache for server ${message.guild.name}`);
-      jokeCache.set(serverId, new Map());
+    const JOKES_CACHE_KEY = `jokes:${serverId}:all`;
+    const USED_JOKES_KEY = `jokes:${serverId}:used`;
+    const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
+
+    let jokesArray: JokeApiResponse[] = [];
+    const cachedJokes = await redisClient.get(JOKES_CACHE_KEY);
+
+    if (cachedJokes) {
+      jokesArray = JSON.parse(cachedJokes);
+      console.debug(`Retrieved ${jokesArray.length} jokes from cache for server ${message.guild.name}`);
+    } else {
+      console.debug(`Fetching jokes from API for server ${message.guild.name}`);
+      const response = await fetch("https://official-joke-api.appspot.com/jokes/random/100");
+      jokesArray = await response.json();
+
+      await redisClient.set(JOKES_CACHE_KEY, JSON.stringify(jokesArray), { EX: ONE_WEEK_SECONDS });
     }
 
-    // biome-ignore lint/style/noNonNullAssertion: <It's handled above it can't be null>
-    const serverCache = jokeCache.get(serverId)!;
+    const usedJokeIds = await redisClient.sMembers(USED_JOKES_KEY);
+    const usedJokesSet = new Set(usedJokeIds);
+    const availableJokes = jokesArray.filter((joke) => joke?.id && !usedJokesSet.has(`${joke.id}`));
 
-    // Clean up cache - any older than a week
-    const now = Date.now();
-    for (const [url, timestamp] of serverCache.entries()) {
-      if (now - timestamp > ONE_WEEK_MS) {
-        serverCache.delete(url);
-      }
+    console.debug(`${availableJokes.length} unused jokes available out of ${jokesArray.length} total`);
+
+    if (availableJokes.length > 0) {
+      const randomIndex = Math.floor(Math.random() * availableJokes.length);
+      const selectedJoke = availableJokes[randomIndex];
+
+      await redisClient.sAdd(USED_JOKES_KEY, `${selectedJoke.id}`);
+      await redisClient.expire(USED_JOKES_KEY, ONE_WEEK_SECONDS);
+
+      return selectedJoke;
     }
 
-    const joke = data[0];
-    const jokeId = joke.id;
-    if (!jokeId || serverCache.has(jokeId)) {
-      console.debug("Joke found in cache, fetching new one");
-      return fetchRandomJoke(message, retries + 1); // Recursively fetch another joke
+    if (retries === 0) {
+      console.debug("All jokes have been used, resetting used jokes set");
+      await redisClient.del(USED_JOKES_KEY);
+      return fetchRandomJoke(message, retries + 1);
     }
 
-    // Add the new meme to the cache
-    serverCache.set(jokeId, now);
-
-    return joke;
+    const randomJoke = jokesArray[Math.floor(Math.random() * jokesArray.length)];
+    console.debug("No unused jokes available, returning a random joke");
+    return randomJoke;
   } catch (error) {
     console.error("Error fetching joke", error);
     return null;
