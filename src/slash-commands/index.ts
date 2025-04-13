@@ -1,12 +1,26 @@
 import type { ChatInputCommandInteraction } from "discord.js";
 import type { Command } from "./commands";
+import { JokeCommand } from "./commands/core/joke";
+import { MemeCommand } from "./commands/core/meme";
+import { QodCommand } from "./commands/core/qod";
+import { QuoteCommand } from "./commands/core/quote";
+import { QuoteImgCommand } from "./commands/core/quoteImg";
+import { RiddleCommand } from "./commands/core/riddle";
 import { PingCommand } from "./commands/utility/ping";
 
 export class InteractionHandler {
   private commands: Command[];
 
   constructor() {
-    this.commands = [new PingCommand()];
+    this.commands = [
+      new PingCommand(),
+      new MemeCommand(),
+      new QodCommand(),
+      new QuoteCommand(),
+      new QuoteImgCommand(),
+      new JokeCommand(),
+      new RiddleCommand(),
+    ];
   }
 
   getSlashCommands() {
@@ -25,7 +39,7 @@ export class InteractionHandler {
     matchedCommand
       .execute(interaction)
       .then(() => {
-        console.log(`Sucesfully executed command [/${interaction.commandName}]`, {
+        console.log(`Successfully executed command [/${interaction.commandName}]`, {
           guild: { id: interaction.guildId, name: interaction.guild?.name },
           user: { name: interaction.user.globalName },
         });

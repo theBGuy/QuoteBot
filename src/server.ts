@@ -1,23 +1,8 @@
-import {
-  AttachmentBuilder,
-  type ChatInputCommandInteraction,
-  Client,
-  EmbedBuilder,
-  Events,
-  GatewayIntentBits,
-  type Message,
-  REST,
-} from "discord.js";
+import { Client, Events, GatewayIntentBits, type Message, REST } from "discord.js";
 import dotenv from "dotenv";
-import {
-  fetchQuoteOfTheDay,
-  fetchRandomJoke,
-  fetchRandomMeme,
-  fetchRandomQuote,
-  fetchRandomRiddle,
-} from "./controllers";
 import prismaClient from "./libs/prismaClient";
 import { initializeRedis, redisClient } from "./libs/redisClient";
+import { CommandService } from "./services/CommandService";
 import { InteractionHandler } from "./slash-commands";
 
 dotenv.config();
@@ -37,8 +22,7 @@ class QuoteBotApplication {
   private client: Client;
   private discordRestClient: REST;
   private interactionHandler: InteractionHandler;
-  private activeRiddles: Map<string, { riddle: string; answer: string }>;
-  private activeJokes: Map<string, { id: number; punchline: string }>;
+  private commandService: CommandService;
 
   constructor() {
     this.client = new Client({
@@ -48,88 +32,7 @@ class QuoteBotApplication {
     });
     this.discordRestClient = new REST().setToken(DISCORD_ACCESS_TOKEN);
     this.interactionHandler = new InteractionHandler();
-    this.activeRiddles = new Map();
-    this.activeJokes = new Map();
-  }
-
-  async handleRiddleEvent(message: Message) {
-    const riddleData = await fetchRandomRiddle();
-    if (riddleData) {
-      this.activeRiddles.set(message.author.id, riddleData);
-      message.reply(`Here's your riddle: ${riddleData.riddle}`);
-    } else {
-      message.reply("Sorry, I couldn't fetch a riddle for you.");
-    }
-  }
-
-  async handleQuoteEvent(message: Message) {
-    const { quote, author } = await fetchRandomQuote();
-    if (quote) {
-      message.reply(`${quote} \n\n**${author}**`);
-    } else {
-      message.reply("Sorry, I couldn't fetch a quote for you.");
-    }
-  }
-
-  async handleQodEvent(message: Message) {
-    const { quote, author } = await fetchQuoteOfTheDay();
-    if (quote) {
-      message.reply(`${quote} \n\n**${author}**`);
-    } else {
-      message.reply("Sorry, I couldn't fetch a quote for you.");
-    }
-  }
-
-  async handleQuoteImage(message: Message) {
-    try {
-      const cacheParam = Math.random().toString(36).substring(7);
-      const imageUrl = `https://zenquotes.io/api/image?cb=${cacheParam}`;
-      const response = await fetch(imageUrl, { method: "HEAD" });
-
-      if (!response.ok) {
-        message.reply("Sorry, I couldn't fetch a quote image right now.");
-        return;
-      }
-
-      const embed = new EmbedBuilder()
-        .setImage(imageUrl)
-        .setColor(0x0099ff)
-        .setFooter({ text: "Powered by ZenQuotes.io" })
-        .setTimestamp();
-
-      await message.reply({ embeds: [embed] });
-    } catch (error) {
-      console.error("Error fetching quote image:", error);
-      message.reply("Sorry, there was an error fetching the quote image.");
-    }
-  }
-
-  async handleMemeEvent(message: Message) {
-    const { url, title, postLink, author: memeAuthor, subreddit } = await fetchRandomMeme(message);
-    if (url) {
-      console.log("title", title, "author", memeAuthor, "post", postLink);
-      const file = new AttachmentBuilder(url);
-      const memeEmbed = new EmbedBuilder()
-        .setTitle(title ?? null)
-        .setURL(postLink ?? null)
-        .setAuthor({ name: memeAuthor ?? "" })
-        .setThumbnail(url)
-        .setImage(`attachment://${url}`)
-        .setFooter({ text: subreddit ?? "" });
-      message.reply({ embeds: [memeEmbed], files: [file] });
-    } else {
-      message.reply("Sorry, I couldn't fetch a meme for you.");
-    }
-  }
-
-  async handleJokeEvent(message: Message) {
-    const joke = await fetchRandomJoke(message);
-    if (joke) {
-      message.reply(`${joke.setup}`);
-      this.activeJokes.set(message.author.id, { id: joke.id, punchline: joke.punchline });
-    } else {
-      message.reply("Sorry, I couldn't fetch a joke for you.");
-    }
+    this.commandService = new CommandService();
   }
 
   addClientEventHandlers() {
@@ -138,44 +41,39 @@ class QuoteBotApplication {
 
       const content = message.content.toLowerCase();
 
-      if (this.activeRiddles.has(message.author.id)) {
-        const riddleData = this.activeRiddles.get(message.author.id);
-        if (riddleData) {
-          message.reply(`You answered: ${message.content}.\nThe correct answer was: ${riddleData.answer}`);
-          this.activeRiddles.delete(message.author.id);
-        }
+      const riddleResponse = await this.commandService.checkActiveRiddle(message.author.id, message.content);
+      if (riddleResponse) {
+        return message.reply(riddleResponse);
       }
 
-      if (this.activeJokes.has(message.author.id)) {
-        const jokePunchline = this.activeJokes.get(message.author.id);
-        if (jokePunchline) {
-          message.reply(jokePunchline.punchline);
-          this.activeJokes.delete(message.author.id);
-        }
+      const jokeResponse = await this.commandService.checkActiveJoke(message.author.id);
+      if (jokeResponse) {
+        return message.reply(jokeResponse);
       }
 
       switch (content) {
         case "riddle me this batman":
         case "!riddle":
-          return this.handleRiddleEvent(message);
+          return this.commandService.handleRiddle(message);
         case "give me a quote":
         case "!quote":
-          return this.handleQuoteEvent(message);
+          return this.commandService.handleQuote(message);
         case "!qod":
-          return this.handleQodEvent(message);
+          return this.commandService.handleQuoteOfTheDay(message);
         case "!quoteimg":
-          return this.handleQuoteImage(message);
+          return this.commandService.handleQuoteImage(message);
         case "!meme":
-          return this.handleMemeEvent(message);
+          return this.commandService.handleMeme(message);
         case "!joke":
-          return this.handleJokeEvent(message);
+          return this.commandService.handleJoke(message);
         default:
           break;
       }
     });
 
-    this.client.on(Events.InteractionCreate, (interaction) => {
-      this.interactionHandler.handleInteraction(interaction as ChatInputCommandInteraction);
+    this.client.on(Events.InteractionCreate, async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
+      await this.interactionHandler.handleInteraction(interaction);
     });
 
     this.client.on(Events.ClientReady, (readyClient) => {
@@ -189,6 +87,7 @@ class QuoteBotApplication {
 
   async startBot() {
     const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+
     for (const signal of signals) {
       process.on(signal, async () => {
         try {
@@ -202,6 +101,7 @@ class QuoteBotApplication {
         }
       });
     }
+
     try {
       await initializeRedis();
       await this.client.login(DISCORD_ACCESS_TOKEN);
