@@ -12,3 +12,77 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// Discord server information
+model Server {
+  id        String   @id // Discord server ID
+  name      String?
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  users        ServerUser[]
+  userScores   UserScore[]
+  serverConfig ServerConfig?
+}
+
+// Basic user information
+model User {
+  id       String  @id // Discord user ID
+  username String?
+
+  // Relationships
+  servers    ServerUser[]
+  userScores UserScore[]
+}
+
+// Junction table for Server-User relationship
+model ServerUser {
+  id       Int      @id @default(autoincrement())
+  userId   String
+  serverId String
+  joinedAt DateTime @default(now())
+  lastSeen DateTime @updatedAt
+
+  // Stats
+  messageCount Int @default(0)
+  commandCount Int @default(0)
+
+  // Relationships
+  user   User   @relation(fields: [userId], references: [id])
+  server Server @relation(fields: [serverId], references: [id])
+
+  @@unique([userId, serverId])
+}
+
+// User scores for jokes, riddles, etc.
+model UserScore {
+  id            Int      @id @default(autoincrement())
+  userId        String
+  serverId      String
+  score         Int
+  type          String // "joke", "riddle", etc.
+  answer        String? // User's answer
+  correctAnswer String? // Correct answer
+  createdAt     DateTime @default(now())
+
+  // Relationships
+  user   User   @relation(fields: [userId], references: [id])
+  server Server @relation(fields: [serverId], references: [id])
+}
+
+// Server-specific configuration
+model ServerConfig {
+  id       Int    @id @default(autoincrement())
+  serverId String @unique
+  prefix   String @default("!")
+
+  // Feature toggles
+  jokesEnabled   Boolean @default(true)
+  riddlesEnabled Boolean @default(true)
+  quotesEnabled  Boolean @default(true)
+  memesEnabled   Boolean @default(true)
+
+  // Relationships
+  server Server @relation(fields: [serverId], references: [id])
+}

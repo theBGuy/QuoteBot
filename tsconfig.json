@@ -23,6 +23,6 @@
     "types": ["node"],
     "skipLibCheck": true  // Skips type checking for libraries in `node_modules`
   },
-  "include": ["src/**/*.ts", "src/types/**/*.d.ts", "scripts/"],
+  "include": ["src/**/*.ts", "src/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist", "coverage", "test"]
 }

@@ -1,48 +1,45 @@
-# Comments are provided throughout this file to help you get started.
-# If you need more help, visit the Docker Compose reference guide at
-# https://docs.docker.com/go/compose-spec-reference/
-
-# Here the instructions define your application as a service called "server".
-# This service is built from the Dockerfile in the current directory.
-# You can add other services your application may depend on here, such as a
-# database or a cache. For examples, see the Awesome Compose repository:
-# https://github.com/docker/awesome-compose
 services:
   server:
     build:
       context: .
     environment:
-      - REDIS_HOST
       - CLIENT_TOKEN
       - CLIENT_ID
-      - DATABASE_URL
+      - DATABASE_URL=postgresql://postgres:prisma@db:5432/quote-bot
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_PORT=5432
       - NODE_ENV=production
+      - PRISMA_CLIENT_ENGINE_TYPE=binary
     depends_on:
       - db
       - redis
     networks:
-      - bot-network
+      - quotebot-network
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src
+          target: /app/dist
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: package.json
   redis:
     image: redis
     container_name: redis-container
     restart: unless-stopped
-    ports:
-      - "6380:6379"
     networks:
-      - bot-network
+      - quotebot-network
   db:
     image: postgres
     restart: unless-stopped
-    user: postgres
     environment:
       POSTGRES_DB: quote-bot
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: prisma
     networks:
-      - bot-network
-    ports:
-      - "5433:5432"
+      - quotebot-network
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -50,13 +47,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    command: postgres -c listen_addresses='*'
 
 networks:
-  bot-network:
+  quotebot-network:
     driver: bridge
 
 volumes:
   db-data:
+
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
 # start the database before your application. The `db-data` volume persists the
