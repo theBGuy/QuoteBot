@@ -1,5 +1,9 @@
 import { Client, Events, GatewayIntentBits, type Message, type OmitPartialGroupDMChannel } from "discord.js";
 import dotenv from "dotenv";
+
+dotenv.config();
+
+import closeWithGrace from "close-with-grace";
 import prismaClient from "./libs/prismaClient";
 import { initializeRedis, redisClient } from "./libs/redisClient";
 import { CommandService } from "./services/CommandService";
@@ -8,8 +12,6 @@ import { InteractionHandler } from "./slash-commands";
 interface MessageCreate extends OmitPartialGroupDMChannel<Message<boolean>> {
   authorId?: string;
 }
-
-dotenv.config();
 
 const DISCORD_ACCESS_TOKEN = process.env.CLIENT_TOKEN ?? "";
 const DISCORD_CLIENT_ID = process.env.CLIENT_ID ?? "";
@@ -100,21 +102,15 @@ class QuoteBotApplication {
   }
 
   async startBot() {
-    const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+    closeWithGrace(async ({ err, signal }) => {
+      if (err) {
+        console.error(err);
+      }
 
-    for (const signal of signals) {
-      process.on(signal, async () => {
-        try {
-          await redisClient.disconnect();
-          await prismaClient.$disconnect();
-          console.error(`Closed application on ${signal}`);
-          process.exit(0);
-        } catch (err) {
-          console.error(`Error closing application on ${signal}`, err);
-          process.exit(1);
-        }
-      });
-    }
+      await redisClient.disconnect();
+      await prismaClient.$disconnect();
+      console.log(`Closed application on ${signal}`);
+    });
 
     try {
       await initializeRedis();

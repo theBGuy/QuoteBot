@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
+    "close-with-grace": "^2.2.0",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
     "prisma": "^6.0.0",
