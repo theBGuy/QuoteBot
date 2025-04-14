@@ -61,7 +61,6 @@ export class InteractionHandler {
 
   async handleInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
     const commandName = interaction.commandName;
-
     const matchedCommand = this.commands.find((command) => command.name === commandName);
 
     if (!matchedCommand) {

@@ -1,9 +1,13 @@
-import { Client, Events, GatewayIntentBits, type Message, REST } from "discord.js";
+import { Client, Events, GatewayIntentBits, type Message, type OmitPartialGroupDMChannel } from "discord.js";
 import dotenv from "dotenv";
 import prismaClient from "./libs/prismaClient";
 import { initializeRedis, redisClient } from "./libs/redisClient";
 import { CommandService } from "./services/CommandService";
 import { InteractionHandler } from "./slash-commands";
+
+interface MessageCreate extends OmitPartialGroupDMChannel<Message<boolean>> {
+  authorId?: string;
+}
 
 dotenv.config();
 
@@ -20,7 +24,6 @@ if (!DISCORD_CLIENT_ID) {
 
 class QuoteBotApplication {
   private client: Client;
-  private discordRestClient: REST;
   private interactionHandler: InteractionHandler;
   private commandService: CommandService;
 
@@ -30,28 +33,32 @@ class QuoteBotApplication {
       shards: "auto",
       failIfNotExists: false,
     });
-    this.discordRestClient = new REST().setToken(DISCORD_ACCESS_TOKEN);
     this.interactionHandler = new InteractionHandler();
-    this.commandService = new CommandService();
+    this.commandService = CommandService.getInstance();
   }
 
   addClientEventHandlers() {
-    this.client.on(Events.MessageCreate, async (message: Message) => {
+    this.client.on(Events.MessageCreate, async (message: MessageCreate) => {
       if (message.author.bot) return;
 
+      const userId = message.author?.id || message.authorId;
       const content = message.content.toLowerCase();
 
-      const riddleResponse = await this.commandService.checkActiveRiddle(message.author.id, message.content);
+      if (!userId) {
+        return message.reply("Failed to find user id");
+      }
+
+      const riddleResponse = await this.commandService.checkActiveRiddle(userId, message.content);
       if (riddleResponse) {
         return message.reply(riddleResponse);
       }
 
-      const jokeResponse = await this.commandService.checkActiveJoke(message.author.id);
+      const jokeResponse = await this.commandService.checkActiveJoke(userId);
       if (jokeResponse) {
         return message.reply(jokeResponse);
       }
 
-      const triviaResponse = await this.commandService.checkTrivia(message.author.id, message.content);
+      const triviaResponse = await this.commandService.checkTrivia(userId, message.content);
       if (triviaResponse) {
         return message.reply(triviaResponse);
       }

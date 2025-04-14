@@ -9,14 +9,20 @@ import {
 } from "../controllers";
 
 export class CommandService {
-  private activeRiddles: Map<string, { riddle: string; answer: string }>;
-  private activeJokes: Map<string, { id: number; punchline: string }>;
-  private activeTriviaQuestions: Map<string, { correctAnswer: string; question: string }>;
+  private static instance: CommandService;
+  private activeRiddles: Map<string, { riddle: string; answer: string }> = new Map();
+  private activeJokes: Map<string, { id: number; punchline: string }> = new Map();
+  private activeTriviaQuestions: Map<string, { correctAnswer: string; question: string }> = new Map();
 
-  constructor() {
-    this.activeRiddles = new Map();
-    this.activeJokes = new Map();
-    this.activeTriviaQuestions = new Map();
+  private constructor() {
+    // prevent direct construction calls with 'new'
+  }
+
+  public static getInstance(): CommandService {
+    if (!CommandService.instance) {
+      CommandService.instance = new CommandService();
+    }
+    return CommandService.instance;
   }
 
   private getUserId(source: Message | ChatInputCommandInteraction): string {
