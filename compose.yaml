@@ -17,6 +17,7 @@ services:
       - redis
     networks:
       - quotebot-network
+    restart: unless-stopped
     develop:
       watch:
         - action: rebuild
